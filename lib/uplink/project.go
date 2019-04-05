@@ -23,6 +23,7 @@ import (
 
 // Project represents a specific project access session.
 type Project struct {
+	uplinkCfg     *Config
 	tc            transport.Client
 	metainfo      metainfo.Client
 	project       *kvmetainfo.Project
@@ -49,9 +50,9 @@ type BucketConfig struct {
 		// Forward Error Correction encoding parameters to be used by
 		// objects in this Bucket.
 		RedundancyScheme storj.RedundancyScheme
-		// SegmentSize is the default segment size to use for new
+		// SegmentsSize is the default segment size to use for new
 		// objects in this Bucket.
-		SegmentSize memory.Size
+		SegmentsSize memory.Size
 	}
 }
 
@@ -80,8 +81,8 @@ func (c *BucketConfig) setDefaults() {
 	if c.Volatile.RedundancyScheme.ShareSize == 0 {
 		c.Volatile.RedundancyScheme.ShareSize = (1 * memory.KiB).Int32()
 	}
-	if c.Volatile.SegmentSize.Int() == 0 {
-		c.Volatile.SegmentSize = 64 * memory.MiB
+	if c.Volatile.SegmentsSize.Int() == 0 {
+		c.Volatile.SegmentsSize = 64 * memory.MiB
 	}
 }
 
@@ -95,8 +96,13 @@ func (p *Project) CreateBucket(ctx context.Context, name string, cfg *BucketConf
 	if cfg.Volatile.RedundancyScheme.ShareSize*int32(cfg.Volatile.RedundancyScheme.RequiredShares)%cfg.EncryptionParameters.BlockSize != 0 {
 		return b, Error.New("EncryptionParameters.BlockSize must be a multiple of RS ShareSize * RS RequiredShares")
 	}
-	pathCipher := cfg.PathCipher.ToCipher()
-	return p.project.CreateBucket(ctx, name, &storj.Bucket{PathCipher: pathCipher})
+	b = storj.Bucket{
+		PathCipher:           cfg.PathCipher.ToCipher(),
+		EncryptionParameters: cfg.EncryptionParameters,
+		RedundancyScheme:     cfg.Volatile.RedundancyScheme,
+		SegmentsSize:         cfg.Volatile.SegmentsSize.Int64(),
+	}
+	return p.project.CreateBucket(ctx, name, &b)
 }
 
 // DeleteBucket deletes a bucket if authorized. If the bucket contains any
@@ -125,8 +131,12 @@ func (p *Project) GetBucketInfo(ctx context.Context, bucket string) (b storj.Buc
 	if err != nil {
 		return b, nil, err
 	}
-	// TODO(paul): fill in once info is plumbed
-	cfg := &BucketConfig{}
+	cfg := &BucketConfig{
+		PathCipher:           b.PathCipher.ToCipherSuite(),
+		EncryptionParameters: b.EncryptionParameters,
+	}
+	cfg.Volatile.RedundancyScheme = b.RedundancyScheme
+	cfg.Volatile.SegmentsSize = memory.Size(b.SegmentsSize)
 	return b, cfg, nil
 }
 
@@ -134,13 +144,13 @@ func (p *Project) GetBucketInfo(ctx context.Context, bucket string) (b storj.Buc
 // information.
 //
 // maxMem is the default maximum amount of memory to be allocated for read
-// buffers while performing decodes of objects in this Bucket. If set to a
-// negative value, the system will use the smallest amount of memory it can. If
-// set to zero, the library default amount of memory will be used.
-func (p *Project) OpenBucket(ctx context.Context, bucket string, access *EncryptionAccess, maxMem memory.Size) (b *Bucket, err error) {
+// buffers while performing decodes of objects in this Bucket. If set to 0,
+// the Uplink's default value will be used. If set to a negative value, the
+// system will use the smallest amount of memory it can.
+func (p *Project) OpenBucket(ctx context.Context, bucketName string, access *EncryptionAccess, maxMem memory.Size) (b *Bucket, err error) {
 	defer mon.Task()(&ctx)(&err)
 
-	bucketInfo, cfg, err := p.GetBucketInfo(ctx, bucket)
+	bucketInfo, cfg, err := p.GetBucketInfo(ctx, bucketName)
 	if err != nil {
 		return nil, err
 	}
@@ -148,14 +158,13 @@ func (p *Project) OpenBucket(ctx context.Context, bucket string, access *Encrypt
 	if access == nil || access.Key == (storj.Key{}) {
 		return nil, Error.New("No encryption key chosen")
 	}
-	pathCipher := cfg.PathCipher.ToCipher()
 	if err != nil {
 		return nil, err
 	}
 	encryptionScheme := cfg.EncryptionParameters.ToEncryptionScheme()
 
 	if maxMem.Int() == 0 {
-		maxMem = 4 * memory.MiB
+		maxMem = p.uplinkCfg.Volatile.MaxMem
 	} else if maxMem.Int() < 0 {
 		maxMem = 0
 	}
@@ -172,26 +181,27 @@ func (p *Project) OpenBucket(ctx context.Context, bucket string, access *Encrypt
 		return nil, err
 	}
 
-	maxEncryptedSegmentSize, err := encryption.CalcEncryptedSize(cfg.Volatile.SegmentSize.Int64(),
+	maxEncryptedSegmentSize, err := encryption.CalcEncryptedSize(cfg.Volatile.SegmentsSize.Int64(),
 		cfg.EncryptionParameters.ToEncryptionScheme())
 	if err != nil {
 		return nil, err
 	}
-	segments := segments.NewSegmentStore(p.metainfo, ec, rs, p.maxInlineSize.Int(), maxEncryptedSegmentSize)
+	segmentStore := segments.NewSegmentStore(p.metainfo, ec, rs, p.maxInlineSize.Int(), maxEncryptedSegmentSize)
 
-	streams, err := streams.NewStreamStore(segments, cfg.Volatile.SegmentSize.Int64(), &access.Key, int(encryptionScheme.BlockSize), encryptionScheme.Cipher)
+	streamStore, err := streams.NewStreamStore(segmentStore, cfg.Volatile.SegmentsSize.Int64(), &access.Key, int(encryptionScheme.BlockSize), encryptionScheme.Cipher)
 	if err != nil {
 		return nil, err
 	}
 
-	buckets := buckets.NewStore(streams)
+	bucketStore := buckets.NewStore(streamStore)
 
 	return &Bucket{
-		Bucket:     bucketInfo,
-		Config:     *cfg,
-		metainfo:   kvmetainfo.New(p.metainfo, buckets, streams, segments, &access.Key),
-		streams:    streams,
-		pathCipher: pathCipher,
+		BucketConfig: *cfg,
+		Name:         bucketInfo.Name,
+		Created:      bucketInfo.Created,
+		bucket:       bucketInfo,
+		metainfo:     kvmetainfo.New(p.metainfo, bucketStore, streamStore, segmentStore, &access.Key),
+		streams:      streamStore,
 	}, nil
 }
 

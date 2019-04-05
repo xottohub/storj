@@ -385,11 +385,11 @@ func (layer *gatewayLayer) MakeBucketWithLocation(ctx context.Context, bucketNam
 		EncryptionParameters: layer.gateway.encryption,
 		Volatile: struct {
 			RedundancyScheme storj.RedundancyScheme
-			SegmentSize      memory.Size
+			SegmentsSize     memory.Size
 		}{
 			RedundancyScheme: layer.gateway.redundancy,
-			// TODO: SegmentSize should be an uplink config, not a bucket config.
-			SegmentSize: layer.gateway.segmentSize,
+			// TODO: SegmentsSize should be an uplink config, not a bucket config.
+			SegmentsSize: layer.gateway.segmentSize,
 		},
 	})
 
@@ -417,12 +417,12 @@ func (layer *gatewayLayer) CopyObject(ctx context.Context, srcBucket, srcObject,
 	}
 	defer func() { err = errs.Combine(err, reader.Close()) }()
 
-	opts := uplink.UploadOptions{
-		ContentType: object.Meta.ContentType,
-		Metadata:    object.Meta.Metadata,
-		Expires:     object.Meta.Expires,
-		Volatile:    object.Meta.Volatile,
-	}
+	var opts uplink.UploadOptions
+	opts.ContentType = object.Meta.ContentType
+	opts.Metadata = object.Meta.Metadata
+	opts.Expires = object.Meta.Expires
+	opts.Volatile.EncryptionParameters = object.Meta.Volatile.EncryptionParameters
+	opts.Volatile.RedundancyScheme = object.Meta.Volatile.RedundancyScheme
 
 	return layer.putObject(ctx, destBucket, destObject, reader, &opts)
 }

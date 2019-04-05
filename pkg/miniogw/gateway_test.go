@@ -23,7 +23,6 @@ import (
 	"storj.io/storj/internal/testplanet"
 	libuplink "storj.io/storj/lib/uplink"
 	"storj.io/storj/pkg/eestream"
-	"storj.io/storj/pkg/identity"
 	"storj.io/storj/pkg/metainfo/kvmetainfo"
 	"storj.io/storj/pkg/pb"
 	"storj.io/storj/pkg/storage/buckets"
@@ -710,26 +709,11 @@ func initEnv(ctx context.Context, planet *testplanet.Planet) (minio.ObjectLayer,
 
 	kvmetainfo := kvmetainfo.New(metainfo, buckets, streams, segments, key)
 
-	uplink, err := libuplink.NewUplink(ctx, &libuplink.Config{
-		Volatile: struct {
-			TLS struct {
-				SkipPeerCAWhitelist bool
-				PeerCAWhitelistPath string
-			}
-			UseIdentity   *identity.FullIdentity
-			MaxInlineSize memory.Size
-			EncKey        *storj.Key
-		}{
-			TLS: struct {
-				SkipPeerCAWhitelist bool
-				PeerCAWhitelistPath string
-			}{
-				SkipPeerCAWhitelist: true,
-			},
-			UseIdentity: planet.Uplinks[0].Identity,
-			EncKey:      key,
-		},
-	})
+	var libuplinkCfg libuplink.Config
+	libuplinkCfg.Volatile.TLS.SkipPeerCAWhitelist = true
+	libuplinkCfg.Volatile.UseIdentity = planet.Uplinks[0].Identity
+	libuplinkCfg.Volatile.EncKey = key
+	uplink, err := libuplink.NewUplink(ctx, &libuplinkCfg)
 	if err != nil {
 		return nil, nil, nil, err
 	}

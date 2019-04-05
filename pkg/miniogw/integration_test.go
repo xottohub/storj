@@ -18,7 +18,6 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 
-	"storj.io/storj/internal/memory"
 	"storj.io/storj/internal/s3client"
 	"storj.io/storj/internal/testcontext"
 	"storj.io/storj/internal/testidentity"
@@ -173,28 +172,14 @@ func runGateway(ctx context.Context, gwCfg config, uplinkCfg uplink.Config, log 
 	key := new(storj.Key)
 	copy(key[:], uplinkCfg.Enc.Key)
 
-	uplink, err := libuplink.NewUplink(ctx, &libuplink.Config{
-		Volatile: struct {
-			TLS struct {
-				SkipPeerCAWhitelist bool
-				PeerCAWhitelistPath string
-			}
-			UseIdentity   *identity.FullIdentity
-			MaxInlineSize memory.Size
-			EncKey        *storj.Key
-		}{
-			TLS: struct {
-				SkipPeerCAWhitelist bool
-				PeerCAWhitelistPath string
-			}{
-				SkipPeerCAWhitelist: !uplinkCfg.TLS.UsePeerCAWhitelist,
-				PeerCAWhitelistPath: uplinkCfg.TLS.PeerCAWhitelistPath,
-			},
-			UseIdentity:   ident,
-			MaxInlineSize: uplinkCfg.Client.MaxInlineSize,
-			EncKey:        key,
-		},
-	})
+	var libuplinkCfg libuplink.Config
+	libuplinkCfg.Volatile.TLS.SkipPeerCAWhitelist = !uplinkCfg.TLS.UsePeerCAWhitelist
+	libuplinkCfg.Volatile.TLS.PeerCAWhitelistPath = uplinkCfg.TLS.PeerCAWhitelistPath
+	libuplinkCfg.Volatile.UseIdentity = ident
+	libuplinkCfg.Volatile.MaxInlineSize = uplinkCfg.Client.MaxInlineSize
+	libuplinkCfg.Volatile.EncKey = key
+
+	uplink, err := libuplink.NewUplink(ctx, &libuplinkCfg)
 	if err != nil {
 		return err
 	}

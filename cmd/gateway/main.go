@@ -19,7 +19,6 @@ import (
 	"go.uber.org/zap"
 
 	"storj.io/storj/internal/fpath"
-	"storj.io/storj/internal/memory"
 	libuplink "storj.io/storj/lib/uplink"
 	"storj.io/storj/pkg/cfgstruct"
 	"storj.io/storj/pkg/identity"
@@ -222,28 +221,14 @@ func (flags GatewayFlags) NewGateway(ctx context.Context, ident *identity.FullId
 	key := new(storj.Key)
 	copy(key[:], flags.Enc.Key)
 
-	uplink, err := libuplink.NewUplink(ctx, &libuplink.Config{
-		Volatile: struct {
-			TLS struct {
-				SkipPeerCAWhitelist bool
-				PeerCAWhitelistPath string
-			}
-			UseIdentity   *identity.FullIdentity
-			MaxInlineSize memory.Size
-			EncKey        *storj.Key
-		}{
-			TLS: struct {
-				SkipPeerCAWhitelist bool
-				PeerCAWhitelistPath string
-			}{
-				SkipPeerCAWhitelist: !flags.TLS.UsePeerCAWhitelist,
-				PeerCAWhitelistPath: flags.TLS.PeerCAWhitelistPath,
-			},
-			UseIdentity:   ident,
-			MaxInlineSize: flags.Client.MaxInlineSize,
-			EncKey:        key,
-		},
-	})
+	var config libuplink.Config
+	config.Volatile.TLS.SkipPeerCAWhitelist = !flags.TLS.UsePeerCAWhitelist
+	config.Volatile.TLS.PeerCAWhitelistPath = flags.TLS.PeerCAWhitelistPath
+	config.Volatile.UseIdentity = ident
+	config.Volatile.MaxInlineSize = flags.Client.MaxInlineSize
+	config.Volatile.EncKey = key
+
+	uplink, err := libuplink.NewUplink(ctx, &config)
 	if err != nil {
 		return nil, err
 	}
