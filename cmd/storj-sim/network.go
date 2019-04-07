@@ -156,12 +156,13 @@ func newNetwork(flags *Flags) (*Processes, error) {
 		Address:    net.JoinHostPort(host, strconv.Itoa(versioncontrolPort)),
 	})
 
-	// if built with using scripts/release.sh add Version Tag to allowed versions of
-	// Versioning Server
+	// if built with using scripts/release.sh use Version Tag as allowed version, else use default v0.0.1
 	test := version.Info{}
 	var ver string
 	if version.Build != test {
 		ver = version.Build.Version.String()
+	} else {
+		ver = "v0.0.1"
 	}
 
 	versioncontrol.Arguments = withCommon(versioncontrol.Directory, Arguments{
