@@ -207,6 +207,7 @@ binaries: ${BINARIES} ## Build gateway, satellite, storagenode, uplink, identity
 .PHONY: libuplink
 libuplink:
 	go generate lib/uplink/ext/uplink.go
+	go generate lib/uplink/plugin/main.go
 
 ##@ Deploy
 
