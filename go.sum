@@ -13,6 +13,8 @@ github.com/Shopify/toxiproxy v2.1.4+incompatible h1:TKdv8HiTLgE5wdJuEML90aBgNWso
 github.com/Shopify/toxiproxy v2.1.4+incompatible/go.mod h1:OXgGpZ6Cli1/URJOF1DMxUHB2q5Ap20/P/eIdh4G0pI=
 github.com/Sirupsen/logrus v1.0.6 h1:HCAGQRk48dRVPA5Y+Yh0qdCSTzPOyU1tBJ7Q9YzotII=
 github.com/Sirupsen/logrus v1.0.6/go.mod h1:rmk17hk6i8ZSAJkSDa7nOxamrG+SP4P0mm+DAvExv4U=
+github.com/aleitner/gogert v0.0.0-20190507162521-abb69f483150 h1:jBL0roFUyYIIlLjpEEG1ef+PpFc3dMibAoMqDa9Mkpw=
+github.com/aleitner/gogert v0.0.0-20190507162521-abb69f483150/go.mod h1:zhPQmRh7ajfdgADvRMrbrJpjvZyfRdAXvuXHGB/PsJo=
 github.com/alicebob/gopher-json v0.0.0-20180125190556-5a6b3ba71ee6 h1:45bxf7AZMwWcqkLzDAQugVEwedisr5nRJ1r+7LYnv0U=
 github.com/alicebob/gopher-json v0.0.0-20180125190556-5a6b3ba71ee6/go.mod h1:SGnFV6hVsYE877CKEZ6tDNTjaSXYUk6QqoIK6PrAtcc=
 github.com/alicebob/miniredis v0.0.0-20180911162847-3657542c8629 h1:gLoh8jzwIxdisBnHiWRIuReqtH9cpslSE2564UWXun0=
