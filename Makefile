@@ -104,6 +104,7 @@ test-docker: ## Run tests in Docker
 test-bindings: libuplink ## Run language binding tests
 	@gcc -o lib/uplink/ext/c_tests.bin lib/uplink/ext/tests/{unity,*_test}.c lib/uplink/ext/uplink-cgo.so
 	lib/uplink/ext/c_tests.bin
+	go generate lib/uplink/ext/tests.go
 
 .PHONY: all-in-one
 all-in-one: ## Deploy docker images with one storagenode locally
