@@ -100,6 +100,11 @@ test-docker: ## Run tests in Docker
 	docker-compose up -d --remove-orphans test
 	docker-compose run test make test
 
+.PHONY: test-bindings
+test-bindings: libuplink ## Run language binding tests
+	@gcc -o lib/uplink/ext/c_tests.bin lib/uplink/ext/tests/{unity,*_test}.c lib/uplink/ext/uplink-cgo.so
+	lib/uplink/ext/c_tests.bin
+
 .PHONY: all-in-one
 all-in-one: ## Deploy docker images with one storagenode locally
 	export VERSION="${TAG}${CUSTOMTAG}" \
@@ -207,7 +212,6 @@ binaries: ${BINARIES} ## Build gateway, satellite, storagenode, uplink, identity
 .PHONY: libuplink
 libuplink:
 	go generate lib/uplink/ext/main.go
-	go generate lib/uplink/plugin/main.go
 
 ##@ Deploy
 
