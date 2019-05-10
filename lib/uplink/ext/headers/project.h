@@ -14,3 +14,14 @@ struct ProjectOptions
 
     } Volatile;
 };
+
+// TODO: move to bucket.h? (also move go src)
+struct BucketConfig
+{
+    CipherSuite PathCipher;
+    struct EncryptionParameters EncryptionParameters;
+    struct {
+        struct RedundancyScheme RedundancyScheme;
+        Size SegmentSize;
+    } Volatile;
+};

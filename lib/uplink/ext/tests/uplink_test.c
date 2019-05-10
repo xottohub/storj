@@ -53,41 +53,21 @@ struct Uplink *NewTestUplink(char **err)
 
 void TestOpenProject(void)
 {
-    // char *_err = "";
-    // char **err = &_err;
-    // uint8_t idVersionNumber = 0;
-    // struct IDVersion idVersion = {0, 0};
-    // struct Config uplinkConfig = {
-    //     {{true, "/whitelist.pem"},
-    //      idVersion,
-    //      "latest",
-    //      1,
-    //      2}};
-    // char *satelliteAddr = getenv("SATELLITE");
-    // APIKey apiKey = ParseAPIKey("testapikey", err);
-    // uint8_t encryptionKey[32];
-    // struct ProjectOptions opts = {
-    //     {&encryptionKey}};
+    char *_err = "";
+    char **err = &_err;
+    char *satelliteAddr = getenv("SATELLITEADDR");
+    APIKey apiKey = ParseAPIKey(getenv("APIKEY"), err);
+    TEST_ASSERT_EQUAL_STRING("", *err);
 
-    // // NB: ensure we get a valid ID version
-    // idVersion = GetIDVersion(idVersionNumber, err);
-    // TEST_ASSERT_EQUAL_STRING("", *err);
-    // TEST_ASSERT_NOT_EQUAL(0, idVersion.GoIDVersion);
+    uint8_t encryptionKey[32];
+    struct ProjectOptions opts = {
+        {&encryptionKey}
+    };
 
-    // uplinkConfig.Volatile.IdentityVersion = idVersion;
-    // TEST_ASSERT_EQUAL_STRING("", *err);
-    // TEST_ASSERT_EQUAL_UINT8(idVersionNumber, uplinkConfig.Volatile.IdentityVersion.Number);
+    struct Uplink *uplink = NewTestUplink(err);
+    TEST_ASSERT_EQUAL_STRING("", *err);
+    TEST_ASSERT_NOT_NULL(uplink);
 
-    // GoCtxPtr ctx = GetContext();
-
-    // struct Uplink *uplink = NewTestUplink(ctx, err);
-    // TEST_ASSERT_EQUAL_STRING("", *err);
-    // TEST_ASSERT_NOT_NULL(uplink);
-
-    // OpenProject(*uplink, satelliteAddr, apiKey, opts, err);
-    // TEST_ASSERT_EQUAL_STRING("", *err);
-}
-
-void TestCreateBucket(void)
-{
+    OpenProject(*uplink, satelliteAddr, apiKey, opts, err);
+    TEST_ASSERT_EQUAL_STRING("", *err);
 }
