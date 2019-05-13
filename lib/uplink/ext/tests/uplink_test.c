@@ -37,7 +37,7 @@ void TestNewUplink_config(void)
 struct Uplink *NewTestUplink(char **err)
 {
     uint8_t idVersionNumber = 0;
-    IDVersion version = GetIDVersion(idVersionNumber, err);
+    IDVersionPtr version = GetIDVersion(idVersionNumber, err);
 
     struct Config testUplinkConfig = {
         {{true, "/whitelist.pem"},

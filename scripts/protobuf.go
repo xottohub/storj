@@ -58,8 +58,10 @@ func run(command, root string) error {
 			"github.com/gogo/protobuf/protoc-gen-gogo@"+gogoVersion,
 			"github.com/nilslice/protolock/cmd/protolock",
 		)
-	case "generate":
-		return walkdirs(root, generate)
+	case "generateGo":
+		return walkdirs(root, generateGo)
+	case "generateC":
+		return walkdirs(root, generateC)
 	case "lint":
 		return walkdirs(root, lint)
 	default:
@@ -113,7 +115,7 @@ func install(deps ...string) error {
 	return err
 }
 
-func generate(dir string, dirs []string, files []string) error {
+func generate(dir string, dirs []string, files []string, args []string) error {
 	defer switchdir(dir)()
 
 	cmd := exec.Command("protolock", "status")
@@ -130,7 +132,6 @@ func generate(dir string, dirs []string, files []string) error {
 		return err
 	}
 
-	args := []string{"--gogo_out=plugins=grpc:.", "--lint_out=."}
 	args = appendCommonArguments(args, dir, dirs, files)
 
 	cmd = exec.Command(*protoc, args...)
@@ -140,6 +141,16 @@ func generate(dir string, dirs []string, files []string) error {
 		fmt.Println(string(out))
 	}
 	return err
+}
+
+func generateGo(dir string, dirs []string, files []string) error {
+	args := []string{"--gogo_out=plugins=grpc:.", "--lint_out=."}
+	return generate(dir, dirs, files, args)
+}
+
+func generateC(dir string, dirs []string, files []string) error {
+	args := []string{"--c_out=.", "--lint_out=."}
+	return generate(dir, dirs, files, args)
 }
 
 func appendCommonArguments(args []string, dir string, dirs []string, files []string) []string {
