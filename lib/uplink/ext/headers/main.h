@@ -7,3 +7,5 @@
 #include "encryption.h"
 #include "bucket.h"
 #include "project.h"
+
+extern void *ConvertValue(struct GoValue *, char **);
