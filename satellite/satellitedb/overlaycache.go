@@ -195,6 +195,32 @@ func (cache *overlaycache) KnownUnreliableOrOffline(ctx context.Context, criteri
 	return badNodes, nil
 }
 
+// Reliable returns all reliable nodes.
+func (cache *overlaycache) Reliable(ctx context.Context, criteria *overlay.NodeCriteria) (nodes storj.NodeIDList, err error) {
+	// get reliable and online nodes
+	rows, err := cache.db.Query(cache.db.Rebind(`
+		SELECT id FROM nodes
+		WHERE audit_success_ratio >= ? AND uptime_ratio >= ? 
+		  AND last_contact_success > ? AND last_contact_success > last_contact_failure`),
+		criteria.AuditSuccessRatio, criteria.UptimeSuccessRatio, time.Now().Add(-criteria.OnlineWindow))
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err = errs.Combine(err, rows.Close())
+	}()
+
+	for rows.Next() {
+		var id storj.NodeID
+		err = rows.Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, id)
+	}
+	return nodes, nil
+}
+
 // Paginate will run through
 func (cache *overlaycache) Paginate(ctx context.Context, offset int64, limit int) ([]*overlay.NodeDossier, bool, error) {
 	cursor := storj.NodeID{}

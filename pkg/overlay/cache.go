@@ -42,6 +42,8 @@ type DB interface {
 	Get(ctx context.Context, nodeID storj.NodeID) (*NodeDossier, error)
 	// KnownUnreliableOrOffline filters a set of nodes to unhealth or offlines node, independent of new
 	KnownUnreliableOrOffline(context.Context, *NodeCriteria, storj.NodeIDList) (storj.NodeIDList, error)
+	// Reliable returns all nodes that are reliable
+	Reliable(context.Context, *NodeCriteria) (storj.NodeIDList, error)
 	// Paginate will page through the database nodes
 	Paginate(ctx context.Context, offset int64, limit int) ([]*NodeDossier, bool, error)
 
@@ -237,6 +239,19 @@ func (cache *Cache) KnownUnreliableOrOffline(ctx context.Context, nodeIds storj.
 		UptimeSuccessRatio: cache.preferences.UptimeRatio,
 	}
 	return cache.db.KnownUnreliableOrOffline(ctx, criteria, nodeIds)
+}
+
+// Reliable filters a set of nodes that are reliable, independent of new.
+func (cache *Cache) Reliable(ctx context.Context) (nodes storj.NodeIDList, err error) {
+	defer mon.Task()(&ctx)(&err)
+	criteria := &NodeCriteria{
+		AuditCount:         cache.preferences.AuditCount,
+		AuditSuccessRatio:  cache.preferences.AuditSuccessRatio,
+		OnlineWindow:       cache.preferences.OnlineWindow,
+		UptimeCount:        cache.preferences.UptimeCount,
+		UptimeSuccessRatio: cache.preferences.UptimeRatio,
+	}
+	return cache.db.Reliable(ctx, criteria)
 }
 
 // Put adds a node id and proto definition into the overlay cache
