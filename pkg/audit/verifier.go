@@ -38,8 +38,9 @@ type Share struct {
 
 // Verifier helps verify the correctness of a given stripe
 type Verifier struct {
-	orders  *orders.Service
-	auditor *identity.PeerIdentity
+	orders      *orders.Service
+	auditor     *identity.PeerIdentity
+	containment DB
 
 	downloader downloader
 }
@@ -64,8 +65,8 @@ func newDefaultDownloader(log *zap.Logger, transport transport.Client, overlay *
 }
 
 // NewVerifier creates a Verifier
-func NewVerifier(log *zap.Logger, transport transport.Client, overlay *overlay.Cache, orders *orders.Service, id *identity.FullIdentity, minBytesPerSecond memory.Size) *Verifier {
-	return &Verifier{downloader: newDefaultDownloader(log, transport, overlay, id, minBytesPerSecond), orders: orders, auditor: id.PeerIdentity()}
+func NewVerifier(log *zap.Logger, transport transport.Client, overlay *overlay.Cache, orders *orders.Service, containment DB, id *identity.FullIdentity, minBytesPerSecond memory.Size) *Verifier {
+	return &Verifier{downloader: newDefaultDownloader(log, transport, overlay, id, minBytesPerSecond), orders: orders, containment: containment, auditor: id.PeerIdentity()}
 }
 
 // Verify downloads shares then verifies the data correctness at the given stripe
