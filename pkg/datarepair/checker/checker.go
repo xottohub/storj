@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
 	monkit "gopkg.in/spacemonkeygo/monkit.v2"
@@ -38,7 +39,7 @@ type Checker struct {
 	metainfo    *metainfo.Service
 	lastChecked string
 	repairQueue queue.RepairQueue
-	overlay     *overlay.Cache
+	nodestate   *ReliableCache
 	irrdb       irreparable.DB
 	logger      *zap.Logger
 	Loop        sync2.Cycle
@@ -51,7 +52,7 @@ func NewChecker(metainfo *metainfo.Service, repairQueue queue.RepairQueue, overl
 		metainfo:    metainfo,
 		lastChecked: "",
 		repairQueue: repairQueue,
-		overlay:     overlay,
+		nodestate:   NewReliableCache(overlay, 5*time.Minute),
 		irrdb:       irrdb,
 		logger:      logger,
 		Loop:        *sync2.NewCycle(interval),
@@ -121,7 +122,12 @@ func (checker *Checker) IdentifyInjuredSegments(ctx context.Context) (err error)
 					continue
 				}
 
-				missingPieces, err := checker.getMissingPieces(ctx, pieces)
+				createdAt, err := ptypes.Timestamp(pointer.CreationDate)
+				if err != nil {
+					return Error.New("error parsing creation date %s", err)
+				}
+
+				missingPieces, err := checker.nodestate.MissingPieces(ctx, createdAt, pieces)
 				if err != nil {
 					return Error.New("error getting missing pieces %s", err)
 				}
@@ -182,26 +188,6 @@ func (checker *Checker) IdentifyInjuredSegments(ctx context.Context) (err error)
 	mon.IntVal("remote_files_lost").Observe(int64(len(remoteSegmentInfo)))
 
 	return nil
-}
-
-func (checker *Checker) getMissingPieces(ctx context.Context, pieces []*pb.RemotePiece) (missingPieces []int32, err error) {
-	var nodeIDs storj.NodeIDList
-	for _, p := range pieces {
-		nodeIDs = append(nodeIDs, p.NodeId)
-	}
-	badNodeIDs, err := checker.overlay.KnownUnreliableOrOffline(ctx, nodeIDs)
-	if err != nil {
-		return nil, Error.New("error getting nodes %s", err)
-	}
-
-	for _, p := range pieces {
-		for _, nodeID := range badNodeIDs {
-			if nodeID == p.NodeId {
-				missingPieces = append(missingPieces, p.GetPieceNum())
-			}
-		}
-	}
-	return missingPieces, nil
 }
 
 // checks for a string in slice
