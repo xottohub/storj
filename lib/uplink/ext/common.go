@@ -297,10 +297,15 @@ func CToGoStruct(fromVar, toPtr interface{}) error {
 }
 
 func CToGoGoValue(cVal C.struct_GoValue) GoValue {
+	snapshot := &[]byte{0}
+	if uintptr(unsafe.Pointer(cVal.Snapshot)) != 0 {
+		snapshot = (*[]byte)(unsafe.Pointer(cVal.Snapshot))
+	}
+
 	return GoValue{
 		ptr:   uintptr(cVal.Ptr),
 		_type: uint(cVal.Type),
-		snapshot: *(*[]byte)(unsafe.Pointer(cVal.Snapshot)),
+		snapshot: *snapshot,
 		size: uintptr(cVal.Size),
 	}
 }
