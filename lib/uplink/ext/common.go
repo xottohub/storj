@@ -330,7 +330,7 @@ func (gv GoValue) GoToCGoValue() (cVal C.struct_GoValue, err error) {
 	return C.struct_GoValue{
 		Ptr:      C.GoUintptr(gv.ptr),
 		Type:     C.enum_ValueType(gv._type),
-		Snapshot: (*C.uchar)(unsafe.Pointer(gv.snapshot)),
+		Snapshot: (*C.uchar)(unsafe.Pointer(&gv.snapshot)),
 		Size:     C.GoUintptr(gv.size),
 	}, nil
 }
