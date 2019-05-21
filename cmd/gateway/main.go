@@ -251,13 +251,7 @@ func (flags GatewayFlags) openProject(ctx context.Context) (*libuplink.Project, 
 		return nil, err
 	}
 
-	encKey := new(storj.Key)
-	copy(encKey[:], flags.Enc.Key)
-
-	var opts libuplink.ProjectOptions
-	opts.Volatile.EncryptionKey = encKey
-
-	return uplink.OpenProject(ctx, flags.Client.SatelliteAddr, apiKey, &opts)
+	return uplink.OpenProject(ctx, flags.Client.SatelliteAddr, apiKey)
 }
 
 func (flags GatewayFlags) interactive(cmd *cobra.Command, setupDir string, overrides map[string]interface{}) error {

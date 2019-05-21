@@ -87,7 +87,7 @@ func (c *UplinkFlags) GetProject(ctx context.Context) (*libuplink.Project, error
 		return nil, err
 	}
 
-	project, err := uplink.OpenProject(ctx, satelliteAddr, apiKey, nil)
+	project, err := uplink.OpenProject(ctx, satelliteAddr, apiKey)
 
 	if err != nil {
 		if err := uplink.Close(); err != nil {
