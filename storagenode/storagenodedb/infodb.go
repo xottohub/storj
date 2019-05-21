@@ -12,6 +12,7 @@ import (
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
 
+	"storj.io/storj/internal/dbutil"
 	"storj.io/storj/internal/migrate"
 )
 
@@ -35,6 +36,8 @@ func newInfo(path string) (*InfoDB, error) {
 		return nil, ErrInfo.Wrap(err)
 	}
 
+	db.SetMaxIdleConns(dbutil.DefaultMaxIdleConns)
+
 	return &InfoDB{db: db}, nil
 }
 
@@ -44,6 +47,8 @@ func NewInfoInMemory() (*InfoDB, error) {
 	if err != nil {
 		return nil, ErrInfo.Wrap(err)
 	}
+
+	db.SetMaxIdleConns(dbutil.DefaultMaxIdleConns)
 
 	return &InfoDB{db: db}, nil
 }
@@ -161,6 +166,20 @@ func (db *InfoDB) Migration() *migrate.Migration {
 					)`,
 					`CREATE INDEX idx_order_archive_satellite ON order_archive(satellite_id)`,
 					`CREATE INDEX idx_order_archive_status ON order_archive(status)`,
+				},
+			},
+			{
+				Description: "Network Wipe #2",
+				Version:     1,
+				Action: migrate.SQL{
+					`UPDATE pieceinfo SET piece_expiration = '2019-05-09 00:00:00.000000+00:00'`,
+				},
+			},
+			{
+				Description: "Add tracking of deletion failures.",
+				Version:     2,
+				Action: migrate.SQL{
+					`ALTER TABLE pieceinfo ADD COLUMN deletion_failed_at TIMESTAMP`,
 				},
 			},
 		},

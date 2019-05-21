@@ -20,19 +20,16 @@ import (
 	"storj.io/storj/pkg/storj"
 )
 
-func TestDeleteRawBefore(t *testing.T) {
+func TestDeleteTalliesBefore(t *testing.T) {
 	tests := []struct {
-		createdAt    time.Time
 		eraseBefore  time.Time
 		expectedRaws int
 	}{
 		{
-			createdAt:    time.Now(),
 			eraseBefore:  time.Now(),
 			expectedRaws: 1,
 		},
 		{
-			createdAt:    time.Now(),
 			eraseBefore:  time.Now().Add(24 * time.Hour),
 			expectedRaws: 0,
 		},
@@ -46,17 +43,69 @@ func TestDeleteRawBefore(t *testing.T) {
 			nodeData := make(map[storj.NodeID]float64)
 			nodeData[id] = float64(1000)
 
-			err := planet.Satellites[0].DB.Accounting().SaveAtRestRaw(ctx, tt.createdAt, tt.createdAt, nodeData)
+			err := planet.Satellites[0].DB.StoragenodeAccounting().SaveTallies(ctx, time.Now(), nodeData)
 			require.NoError(t, err)
 
-			err = planet.Satellites[0].DB.Accounting().DeleteRawBefore(ctx, tt.eraseBefore)
+			err = planet.Satellites[0].DB.StoragenodeAccounting().DeleteTalliesBefore(ctx, tt.eraseBefore)
 			require.NoError(t, err)
 
-			raws, err := planet.Satellites[0].DB.Accounting().GetRaw(ctx)
+			raws, err := planet.Satellites[0].DB.StoragenodeAccounting().GetTallies(ctx)
 			require.NoError(t, err)
 			assert.Len(t, raws, tt.expectedRaws)
 		})
 	}
+}
+
+func TestOnlyInline(t *testing.T) {
+	testplanet.Run(t, testplanet.Config{
+		SatelliteCount: 1, StorageNodeCount: 6, UplinkCount: 1,
+	}, func(t *testing.T, ctx *testcontext.Context, planet *testplanet.Planet) {
+		tallySvc := planet.Satellites[0].Accounting.Tally
+		uplink := planet.Uplinks[0]
+
+		// Setup: create data for the uplink to upload
+		expectedData := make([]byte, 1*memory.KiB)
+		_, err := rand.Read(expectedData)
+		require.NoError(t, err)
+
+		// Setup: get the expected size of the data that will be stored in pointer
+		uplinkConfig := uplink.GetConfig(planet.Satellites[0])
+		expectedTotalBytes, err := encryption.CalcEncryptedSize(int64(len(expectedData)), uplinkConfig.GetEncryptionScheme())
+		require.NoError(t, err)
+
+		// Setup: The data in this tally should match the pointer that the uplink.upload created
+		expectedTally := accounting.BucketTally{
+			Segments:       1,
+			InlineSegments: 1,
+			Files:          1,
+			InlineFiles:    1,
+			Bytes:          expectedTotalBytes,
+			InlineBytes:    expectedTotalBytes,
+			MetadataSize:   111, // brittle, this is hardcoded since its too difficult to get this value progamatically
+		}
+
+		// Execute test: upload a file, then calculate at rest data
+		expectedBucketName := "testbucket"
+		err = uplink.Upload(ctx, planet.Satellites[0], expectedBucketName, "test/path", expectedData)
+		assert.NoError(t, err)
+
+		// Run calculate twice to test unique constraint issue
+		for i := 0; i < 2; i++ {
+			latestTally, actualNodeData, actualBucketData, err := tallySvc.CalculateAtRestData(ctx)
+			require.NoError(t, err)
+			assert.Len(t, actualNodeData, 0)
+
+			_, err = planet.Satellites[0].DB.ProjectAccounting().SaveTallies(ctx, latestTally, actualBucketData)
+			require.NoError(t, err)
+
+			// Confirm the correct bucket storage tally was created
+			assert.Equal(t, len(actualBucketData), 1)
+			for bucketID, actualTally := range actualBucketData {
+				assert.Contains(t, bucketID, expectedBucketName)
+				assert.Equal(t, expectedTally, *actualTally)
+			}
+		}
+	})
 }
 
 func TestCalculateAtRestData(t *testing.T) {

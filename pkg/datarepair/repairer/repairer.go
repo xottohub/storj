@@ -33,9 +33,9 @@ var (
 
 // Config contains configurable values for repairer
 type Config struct {
-	MaxRepair    int           `help:"maximum segments that can be repaired concurrently" default:"10"`
-	Interval     time.Duration `help:"how frequently checker should audit segments" default:"0h5m0s"`
-	Timeout      time.Duration `help:"time limit for uploading repaired pieces to new storage nodes" default:"1m0s"`
+	MaxRepair    int           `help:"maximum segments that can be repaired concurrently" releaseDefault:"5" devDefault:"1"`
+	Interval     time.Duration `help:"how frequently checker should audit segments" releaseDefault:"1h" devDefault:"0h5m0s"`
+	Timeout      time.Duration `help:"time limit for uploading repaired pieces to new storage nodes" default:"10m0s"`
 	MaxBufferMem memory.Size   `help:"maximum buffer memory (in bytes) to be allocated for read buffers" default:"4M"`
 }
 
@@ -50,7 +50,7 @@ func (c Config) GetSegmentRepairer(ctx context.Context, tc transport.Client, met
 
 // SegmentRepairer is a repairer for segments
 type SegmentRepairer interface {
-	Repair(ctx context.Context, path storj.Path, lostPieces []int32) (err error)
+	Repair(ctx context.Context, path storj.Path) (err error)
 }
 
 // Service contains the information needed to run the repair service
@@ -116,6 +116,7 @@ func (service *Service) Run(ctx context.Context) (err error) {
 func (service *Service) process(ctx context.Context) error {
 	for {
 		seg, err := service.queue.Select(ctx)
+		zap.L().Info("Dequeued segment from repair queue", zap.String("segment", seg.GetPath()))
 		if err != nil {
 			if storage.ErrEmptyQueue.Has(err) {
 				return nil
@@ -124,10 +125,12 @@ func (service *Service) process(ctx context.Context) error {
 		}
 
 		service.Limiter.Go(ctx, func() {
-			err := service.repairer.Repair(ctx, seg.GetPath(), seg.GetLostPieces())
+			zap.L().Info("Limiter running repair on segment", zap.String("segment", seg.GetPath()))
+			err := service.repairer.Repair(ctx, seg.GetPath())
 			if err != nil {
 				zap.L().Error("repair failed", zap.Error(err))
 			}
+			zap.L().Info("Deleting segment from repair queue", zap.String("segment", seg.GetPath()))
 			err = service.queue.Delete(ctx, seg)
 			if err != nil {
 				zap.L().Error("repair delete failed", zap.Error(err))

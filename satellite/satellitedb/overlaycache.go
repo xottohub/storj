@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes"
+	"github.com/lib/pq"
+	sqlite3 "github.com/mattn/go-sqlite3"
 	"github.com/zeebo/errs"
 	monkit "gopkg.in/spacemonkeygo/monkit.v2"
 
@@ -55,7 +57,7 @@ func (cache *overlaycache) SelectStorageNodes(ctx context.Context, count int, cr
 			return nil, Error.New("invalid node selection criteria version: %v", err)
 		}
 		safeQuery += `
-			AND major > ? OR (major = ? AND (minor > ? OR (minor = ? AND patch >= ?)))
+			AND (major > ? OR (major = ? AND (minor > ? OR (minor = ? AND patch >= ?))))
 			AND release`
 		args = append(args, v.Major, v.Major, v.Minor, v.Minor, v.Patch)
 	}
@@ -68,8 +70,7 @@ func (cache *overlaycache) SelectNewStorageNodes(ctx context.Context, count int,
 
 	safeQuery := `
 		WHERE type = ? AND free_bandwidth >= ? AND free_disk >= ?
-		  AND total_audit_count < ?
-		  AND (audit_success_ratio >= ? OR total_audit_count = 0)
+		  AND total_audit_count < ? AND audit_success_ratio >= ?
 		  AND last_contact_success > ?
 		  AND last_contact_success > last_contact_failure`
 	args := append(make([]interface{}, 0, 10),
@@ -81,7 +82,7 @@ func (cache *overlaycache) SelectNewStorageNodes(ctx context.Context, count int,
 			return nil, Error.New("invalid node selection criteria version: %v", err)
 		}
 		safeQuery += `
-			AND major > ? OR (major = ? AND (minor > ? OR (minor = ? AND patch >= ?)))
+			AND (major > ? OR (major = ? AND (minor > ? OR (minor = ? AND patch >= ?))))
 			AND release`
 		args = append(args, v.Major, v.Major, v.Minor, v.Minor, v.Patch)
 	}
@@ -155,18 +156,65 @@ func (cache *overlaycache) Get(ctx context.Context, id storj.NodeID) (*overlay.N
 	return convertDBNode(node)
 }
 
-// GetAll looks up nodes based on the ids from the overlay cache
-func (cache *overlaycache) GetAll(ctx context.Context, ids storj.NodeIDList) ([]*overlay.NodeDossier, error) {
-	infos := make([]*overlay.NodeDossier, len(ids))
-	for i, id := range ids {
-		// TODO: abort on canceled context
-		info, err := cache.Get(ctx, id)
-		if err != nil {
-			continue
-		}
-		infos[i] = info
+// KnownUnreliableOrOffline filters a set of nodes to unreliable or offlines node, independent of new
+func (cache *overlaycache) KnownUnreliableOrOffline(ctx context.Context, criteria *overlay.NodeCriteria, nodeIds storj.NodeIDList) (badNodes storj.NodeIDList, err error) {
+	if len(nodeIds) == 0 {
+		return nil, Error.New("no ids provided")
 	}
-	return infos, nil
+
+	// get reliable and online nodes
+	var rows *sql.Rows
+	switch t := cache.db.Driver().(type) {
+	case *sqlite3.SQLiteDriver:
+		args := make([]interface{}, 0, len(nodeIds)+3)
+		for i := range nodeIds {
+			args = append(args, nodeIds[i].Bytes())
+		}
+		args = append(args, criteria.AuditSuccessRatio, criteria.UptimeSuccessRatio, time.Now().Add(-criteria.OnlineWindow))
+
+		rows, err = cache.db.Query(cache.db.Rebind(`
+			SELECT id FROM nodes
+			WHERE id IN (?`+strings.Repeat(", ?", len(nodeIds)-1)+`)
+			AND audit_success_ratio >= ? AND uptime_ratio >= ?
+			AND last_contact_success > ? AND last_contact_success > last_contact_failure
+		`), args...)
+
+	case *pq.Driver:
+		rows, err = cache.db.Query(`
+			SELECT id FROM nodes
+				WHERE id = any($1::bytea[])
+				AND audit_success_ratio >= $2 AND uptime_ratio >= $3
+				AND last_contact_success > $4 AND last_contact_success > last_contact_failure
+			`, postgresNodeIDList(nodeIds),
+			criteria.AuditSuccessRatio, criteria.UptimeSuccessRatio,
+			time.Now().Add(-criteria.OnlineWindow),
+		)
+	default:
+		return nil, Error.New("Unsupported database %t", t)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		err = errs.Combine(err, rows.Close())
+	}()
+
+	goodNodes := make(map[storj.NodeID]struct{}, len(nodeIds))
+	for rows.Next() {
+		var id storj.NodeID
+		err = rows.Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		goodNodes[id] = struct{}{}
+	}
+	for _, id := range nodeIds {
+		if _, ok := goodNodes[id]; !ok {
+			badNodes = append(badNodes, id)
+		}
+	}
+	return badNodes, nil
 }
 
 // Paginate will run through
@@ -238,12 +286,13 @@ func (cache *overlaycache) UpdateAddress(ctx context.Context, info *pb.Node) (er
 			dbx.Node_Latency90(0),
 			dbx.Node_AuditSuccessCount(0),
 			dbx.Node_TotalAuditCount(0),
-			dbx.Node_AuditSuccessRatio(0),
+			dbx.Node_AuditSuccessRatio(1),
 			dbx.Node_UptimeSuccessCount(0),
 			dbx.Node_TotalUptimeCount(0),
-			dbx.Node_UptimeRatio(0),
+			dbx.Node_UptimeRatio(1),
 			dbx.Node_LastContactSuccess(time.Now()),
 			dbx.Node_LastContactFailure(time.Time{}),
+			dbx.Node_Contained(false),
 		)
 		if err != nil {
 			return Error.Wrap(errs.Combine(err, tx.Rollback()))
@@ -521,6 +570,7 @@ func convertDBNode(info *dbx.Node) (*overlay.NodeDossier, error) {
 			Timestamp:  pbts,
 			Release:    info.Release,
 		},
+		Contained: info.Contained,
 	}
 
 	return node, nil

@@ -7,6 +7,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/zeebo/errs"
 	"go.uber.org/zap"
 
 	"storj.io/storj/internal/memory"
@@ -17,6 +18,9 @@ import (
 	"storj.io/storj/satellite/metainfo"
 	"storj.io/storj/satellite/orders"
 )
+
+// Error is the default audit errs class
+var Error = errs.Class("audit error")
 
 // Config contains configurable values for audit service
 type Config struct {
@@ -73,9 +77,19 @@ func (service *Service) Close() error {
 
 // process picks a random stripe and verifies correctness
 func (service *Service) process(ctx context.Context) error {
-	stripe, err := service.Cursor.NextStripe(ctx)
-	if err != nil {
-		return err
+	var stripe *Stripe
+	for {
+		s, more, err := service.Cursor.NextStripe(ctx)
+		if err != nil {
+			return err
+		}
+		if s != nil {
+			stripe = s
+			break
+		}
+		if !more {
+			return nil
+		}
 	}
 
 	verifiedNodes, err := service.Verifier.Verify(ctx, stripe)

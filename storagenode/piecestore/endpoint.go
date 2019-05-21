@@ -42,14 +42,11 @@ var _ pb.PiecestoreServer = (*Endpoint)(nil)
 type OldConfig struct {
 	Path string `help:"path to store data in" default:"$CONFDIR/storage"`
 
-	WhitelistedSatelliteIDs string        `help:"a comma-separated list of approved satellite node ids" default:""`
+	WhitelistedSatelliteIDs string        `help:"a comma-separated list of approved satellite node ids" devDefault:"" releaseDefault:"12EayRS2V1kEsWESU9QMRseFhdxYxKicsiFmxrsLZHeLUtdps3S,118UWpMCHzs6CvSgWd9BfFVjw5K9pZbJjkfZJexMtSkmKxvvAW,121RTSDpyNZVcEU84Ticf2L1ntiuUimbWgfATz21tuvgk3vzoA6,12L9ZFwhzVpuEKMUNUqkaTLGzwY9G24tbiigLiXpmZWKwmcNDDs"`
 	SatelliteIDRestriction  bool          `help:"if true, only allow data from approved satellites" devDefault:"false" releaseDefault:"true"`
 	AllocatedDiskSpace      memory.Size   `user:"true" help:"total allocated disk space in bytes" default:"1TB"`
 	AllocatedBandwidth      memory.Size   `user:"true" help:"total allocated bandwidth in bytes" default:"500GiB"`
 	KBucketRefreshInterval  time.Duration `help:"how frequently Kademlia bucket should be refreshed with node stats" default:"1h0m0s"`
-
-	AgreementSenderCheckInterval time.Duration `help:"duration between agreement checks" default:"1h0m0s"`
-	CollectorInterval            time.Duration `help:"interval to check for expired pieces" default:"1h0m0s"`
 }
 
 // Config defines parameters for piecestore endpoint.
@@ -157,9 +154,9 @@ func (endpoint *Endpoint) Upload(stream pb.Piecestore_UploadServer) (err error) 
 
 	defer func() {
 		if err != nil {
-			endpoint.log.Info("upload failed", zap.Stringer("Piece ID", limit.PieceId), zap.Stringer("Node ID", limit.StorageNodeId), zap.Error(err))
+			endpoint.log.Info("upload failed", zap.Stringer("Piece ID", limit.PieceId), zap.Stringer("Node ID", limit.StorageNodeId), zap.Stringer("Action", limit.Action), zap.Error(err))
 		} else {
-			endpoint.log.Info("uploaded", zap.Stringer("Piece ID", limit.PieceId))
+			endpoint.log.Info("uploaded", zap.Stringer("Piece ID", limit.PieceId), zap.Stringer("Action", limit.Action))
 		}
 	}()
 
@@ -325,9 +322,9 @@ func (endpoint *Endpoint) Download(stream pb.Piecestore_DownloadServer) (err err
 
 	defer func() {
 		if err != nil {
-			endpoint.log.Info("download failed", zap.Stringer("Piece ID", limit.PieceId), zap.Error(err))
+			endpoint.log.Info("download failed", zap.Stringer("Piece ID", limit.PieceId), zap.Stringer("Action", limit.Action), zap.Error(err))
 		} else {
-			endpoint.log.Info("downloaded", zap.Stringer("Piece ID", limit.PieceId))
+			endpoint.log.Info("downloaded", zap.Stringer("Piece ID", limit.PieceId), zap.Stringer("Action", limit.Action))
 		}
 	}()
 
