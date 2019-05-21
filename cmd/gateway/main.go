@@ -266,7 +266,6 @@ func (flags GatewayFlags) interactive(cmd *cobra.Command, setupDir string, overr
 		return Error.Wrap(err)
 	}
 
-
 	apiKey, err := cfgstruct.PromptForAPIKey()
 	if err != nil {
 		return Error.Wrap(err)
@@ -300,7 +299,6 @@ Some things to try next:
 	}
 
 	return nil
-
 
 }
 
