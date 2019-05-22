@@ -82,15 +82,24 @@ func (c *UplinkFlags) GetProject(ctx context.Context) (*libuplink.Project, error
 	cfg.Volatile.MaxInlineSize = c.Client.MaxInlineSize
 	cfg.Volatile.MaxMemory = c.RS.MaxBufferMem
 
-	uplink, err := c.NewUplink(ctx, cfg)
+	uplk, err := c.NewUplink(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	project, err := uplink.OpenProject(ctx, satelliteAddr, apiKey, nil)
+	opts := &libuplink.ProjectOptions{}
+
+	encKey, err := uplink.UseOrLoadEncryptionKey(c.Enc.EncryptionKey, c.Enc.KeyFilepath)
+	if err != nil {
+		return nil, err
+	}
+
+	opts.Volatile.EncryptionKey = encKey
+
+	project, err := uplk.OpenProject(ctx, satelliteAddr, apiKey, opts)
 
 	if err != nil {
-		if err := uplink.Close(); err != nil {
+		if err := uplk.Close(); err != nil {
 			fmt.Printf("error closing uplink: %+v\n", err)
 		}
 	}
