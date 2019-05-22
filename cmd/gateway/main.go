@@ -251,7 +251,7 @@ func (flags GatewayFlags) openProject(ctx context.Context) (*libuplink.Project, 
 		return nil, err
 	}
 
-	return uplink.OpenProject(ctx, flags.Client.SatelliteAddr, apiKey)
+	return uplink.OpenProject(ctx, flags.Client.SatelliteAddr, apiKey, nil)
 }
 
 func (flags GatewayFlags) interactive(cmd *cobra.Command, setupDir string, overrides map[string]interface{}) error {
