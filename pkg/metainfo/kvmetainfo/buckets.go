@@ -45,12 +45,12 @@ func (db *Project) CreateBucket(ctx context.Context, bucketName string, info *st
 	// 	info.SegmentsSize = db.segmentsSize
 	// }
 
-	// meta, err := db.buckets.Put(ctx, bucketName, buckets.Meta{
-	// 	PathEncryptionType: info.PathCipher,
-	// 	SegmentsSize:       info.SegmentsSize,
-	// 	RedundancyScheme:   info.RedundancyScheme,
-	// 	EncryptionScheme:   info.EncryptionParameters.ToEncryptionScheme(),
-	// })
+	meta, err := db.buckets.Put(ctx, bucketName, buckets.Meta{
+		PathEncryptionType: info.PathCipher,
+		SegmentsSize:       info.SegmentsSize,
+		RedundancyScheme:   info.RedundancyScheme,
+		EncryptionScheme:   info.EncryptionParameters.ToEncryptionScheme(),
+	})
 
 	if err != nil {
 		return storj.Bucket{}, err
