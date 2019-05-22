@@ -44,12 +44,13 @@ type Verifier struct {
 	auditor           *identity.PeerIdentity
 	transport         transport.Client
 	overlay           *overlay.Cache
+	containmentDB     DB
 	minBytesPerSecond memory.Size
 }
 
 // NewVerifier creates a Verifier
-func NewVerifier(log *zap.Logger, transport transport.Client, overlay *overlay.Cache, orders *orders.Service, id *identity.FullIdentity, minBytesPerSecond memory.Size) *Verifier {
-	return &Verifier{log: log, orders: orders, auditor: id.PeerIdentity(), transport: transport, overlay: overlay, minBytesPerSecond: minBytesPerSecond}
+func NewVerifier(log *zap.Logger, transport transport.Client, overlay *overlay.Cache, containmentDB DB, orders *orders.Service, id *identity.FullIdentity, minBytesPerSecond memory.Size) *Verifier {
+	return &Verifier{log: log, orders: orders, auditor: id.PeerIdentity(), transport: transport, overlay: overlay, containmentDB: containmentDB, minBytesPerSecond: minBytesPerSecond}
 }
 
 // Verify downloads shares then verifies the data correctness at the given stripe

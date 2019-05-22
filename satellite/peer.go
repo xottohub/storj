@@ -410,6 +410,7 @@ func New(log *zap.Logger, full *identity.FullIdentity, db DB, config *Config, ve
 			peer.Transport,
 			peer.Overlay.Service,
 			peer.Identity,
+			peer.DB.Containment(),
 		)
 		if err != nil {
 			return nil, errs.Combine(err, peer.Close())

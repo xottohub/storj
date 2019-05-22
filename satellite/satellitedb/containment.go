@@ -128,10 +128,10 @@ func convertDBPending(info *dbx.PendingAudits) (*audit.PendingAudit, error) {
 	pending := &audit.PendingAudit{
 		NodeID:            nodeID,
 		PieceID:           pieceID,
-		StripeIndex:       uint32(info.StripeIndex),
+		StripeIndex:       info.StripeIndex,
 		ShareSize:         info.ShareSize,
 		ExpectedShareHash: info.ExpectedShareHash,
-		ReverifyCount:     uint32(info.ReverifyCount),
+		ReverifyCount:     info.ReverifyCount,
 	}
 	return pending, nil
 }

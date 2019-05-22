@@ -18,8 +18,9 @@ import (
 
 	"github.com/lib/pq"
 
-	"github.com/mattn/go-sqlite3"
 	"math/rand"
+
+	"github.com/mattn/go-sqlite3"
 )
 
 // Prevent conditional imports from causing build failures
@@ -2621,7 +2622,7 @@ type PendingAudits struct {
 	NodeId            []byte
 	PieceId           []byte
 	StripeIndex       int64
-	ShareSize         int64
+	ShareSize         int32
 	ExpectedShareHash []byte
 	ReverifyCount     int64
 }
