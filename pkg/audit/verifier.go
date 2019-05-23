@@ -6,6 +6,7 @@ package audit
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -79,13 +80,11 @@ func (verifier *Verifier) Verify(ctx context.Context, stripe *Stripe) (verifiedN
 		return nil, err
 	}
 
-	shares, nodes, err := verifier.DownloadShares(ctx, orderLimits, stripe.Index, shareSize)
+	shares, nodes, report, err := verifier.DownloadShares(ctx, orderLimits, stripe.Index, shareSize)
 	if err != nil {
 		return nil, err
 	}
 
-	var offlineNodes storj.NodeIDList
-	var failedNodes storj.NodeIDList
 	containedNodes := make(map[int]storj.NodeID)
 	sharesToAudit := make(map[int]Share)
 
@@ -95,54 +94,44 @@ func (verifier *Verifier) Verify(ctx context.Context, stripe *Stripe) (verifiedN
 			if shares[pieceNum].Error == context.DeadlineExceeded || !transport.Error.Has(shares[pieceNum].Error) || ContainError.Has(shares[pieceNum].Error) {
 				containedNodes[pieceNum] = nodes[pieceNum]
 			} else {
-				offlineNodes = append(offlineNodes, nodes[pieceNum])
+				report.OfflineNodeIDs = append(report.OfflineNodeIDs, nodes[pieceNum])
 			}
 		} else {
 			sharesToAudit[pieceNum] = share
 		}
 	}
 
+	fmt.Println("the only good node", nodes[0])
+
 	required := int(pointer.Remote.Redundancy.GetMinReq())
 	total := int(pointer.Remote.Redundancy.GetTotal())
-
 	if len(sharesToAudit) < required {
-		return &RecordAuditsInfo{
-			OfflineNodeIDs: offlineNodes,
-		}, ErrNotEnoughShares.New("got %d, required %d", len(sharesToAudit), required)
+		return report, ErrNotEnoughShares.New("got %d, required %d", len(sharesToAudit), required)
 	}
 
 	pieceNums, correctedShares, err := auditShares(ctx, required, total, sharesToAudit)
 	if err != nil {
-		return &RecordAuditsInfo{
-			OfflineNodeIDs: offlineNodes,
-		}, err
+		return report, err
 	}
 
 	for _, pieceNum := range pieceNums {
-		failedNodes = append(failedNodes, nodes[pieceNum])
+		report.FailNodeIDs = append(report.FailNodeIDs, nodes[pieceNum])
 	}
 
-	successNodes := getSuccessNodes(ctx, nodes, failedNodes, offlineNodes, containedNodes)
+	successNodes := getSuccessNodes(ctx, nodes, report.FailNodeIDs, report.OfflineNodeIDs, containedNodes)
+	report.SuccessNodeIDs = append(report.SuccessNodeIDs, successNodes...)
 
 	pendingAudits, err := createPendingAudits(containedNodes, correctedShares, stripe)
 	if err != nil {
-		return &RecordAuditsInfo{
-			SuccessNodeIDs: successNodes,
-			FailNodeIDs:    failedNodes,
-			OfflineNodeIDs: offlineNodes,
-		}, err
+		return report, err
 	}
+	report.PendingAudits = append(report.PendingAudits, pendingAudits...)
 
-	return &RecordAuditsInfo{
-		SuccessNodeIDs: successNodes,
-		FailNodeIDs:    failedNodes,
-		OfflineNodeIDs: offlineNodes,
-		PendingAudits:  pendingAudits,
-	}, nil
+	return report, nil
 }
 
 // DownloadShares downloads shares from the nodes where remote pieces are located
-func (verifier *Verifier) DownloadShares(ctx context.Context, limits []*pb.AddressedOrderLimit, stripeIndex int64, shareSize int32) (shares map[int]Share, nodes map[int]storj.NodeID, err error) {
+func (verifier *Verifier) DownloadShares(ctx context.Context, limits []*pb.AddressedOrderLimit, stripeIndex int64, shareSize int32) (shares map[int]Share, nodes map[int]storj.NodeID, report *RecordAuditsInfo, err error) {
 	defer mon.Task()(&ctx)(&err)
 
 	shares = make(map[int]Share, len(limits))
@@ -157,12 +146,12 @@ func (verifier *Verifier) DownloadShares(ctx context.Context, limits []*pb.Addre
 
 		node, err := verifier.overlay.Get(ctx, limit.Limit.StorageNodeId)
 		if err != nil {
-			return nil, nil, Error.Wrap(err)
+			return nil, nil, nil, Error.Wrap(err)
 		}
 		if node.Contained {
-			isVerified, err := verifier.Reverify(ctx, node.Id, limit, i)
+			isVerified, reportInfo, err := verifier.Reverify(ctx, node.Id, limit, i)
 			if err != nil {
-				return nil, nil, Error.Wrap(err)
+				return nil, nil, nil, Error.Wrap(err)
 			}
 			if !isVerified {
 				// if contained nodes don't pass reverification, then we don't audit them for other data
@@ -171,6 +160,8 @@ func (verifier *Verifier) DownloadShares(ctx context.Context, limits []*pb.Addre
 					PieceNum: i,
 					Data:     nil,
 				}
+			} else {
+				report = reportInfo
 			}
 		} else {
 			share, err = verifier.getShare(ctx, limit, stripeIndex, shareSize, i)
@@ -186,54 +177,51 @@ func (verifier *Verifier) DownloadShares(ctx context.Context, limits []*pb.Addre
 		nodes[share.PieceNum] = limit.GetLimit().StorageNodeId
 	}
 
-	return shares, nodes, nil
+	return shares, nodes, report, nil
 }
 
 // Reverify verifies that a node has an erasure share that it was contained for not verifying previously
-func (verifier *Verifier) Reverify(ctx context.Context, id storj.NodeID, limit *pb.AddressedOrderLimit, pieceNum int) (isVerified bool, err error) {
+func (verifier *Verifier) Reverify(ctx context.Context, id storj.NodeID, limit *pb.AddressedOrderLimit, pieceNum int) (isVerified bool, report *RecordAuditsInfo, err error) {
 	defer mon.Task()(&ctx)(&err)
+
+	// sets fields to non-nil to avoid panics
+	report = &RecordAuditsInfo{
+		SuccessNodeIDs: storj.NodeIDList{},
+		FailNodeIDs:    storj.NodeIDList{},
+		OfflineNodeIDs: storj.NodeIDList{},
+		PendingAudits:  []*PendingAudit{},
+	}
 
 	pendingAudit, err := verifier.containment.Get(ctx, id)
 	if err != nil {
-		return false, Error.Wrap(err)
+		return false, nil, Error.Wrap(err)
 	}
 
 	share, err := verifier.getShare(ctx, limit, pendingAudit.StripeIndex, pendingAudit.ShareSize, pieceNum)
 	if err != nil {
 		// todo: make more specific for contained cases
 		if err == context.DeadlineExceeded || !transport.Error.Has(err) {
-			err := verifier.containment.IncrementPending(ctx, pendingAudit)
-			return false, Error.Wrap(err)
+			report.PendingAudits = append(report.PendingAudits, pendingAudit)
 		}
-		return false, Error.Wrap(err)
-	}
-
-	auditRecords := &RecordAuditsInfo{
-		SuccessNodeIDs: []storj.NodeID{},
-		FailNodeIDs:    []storj.NodeID{},
+		return false, nil, Error.Wrap(err)
 	}
 
 	downloadedHash := pkcrypto.SHA256Hash(share.Data)
 
 	if bytes.Equal(downloadedHash, pendingAudit.ExpectedShareHash) {
-		auditRecords.SuccessNodeIDs = []storj.NodeID{pendingAudit.NodeID}
+		report.SuccessNodeIDs = append(report.SuccessNodeIDs, pendingAudit.NodeID)
 	} else {
-		auditRecords.FailNodeIDs = []storj.NodeID{pendingAudit.NodeID}
-	}
-
-	_, err = verifier.reporter.RecordAudits(ctx, auditRecords)
-	if err != nil {
-		return false, Error.Wrap(err)
+		report.FailNodeIDs = append(report.FailNodeIDs, pendingAudit.NodeID)
 	}
 
 	isDeleted, err := verifier.containment.Delete(ctx, id)
 	if err != nil {
-		return false, Error.Wrap(err)
+		return false, nil, Error.Wrap(err)
 	}
 	if !isDeleted {
-		return true, ErrContainDelete.New(id.String())
+		return true, nil, ErrContainDelete.New(id.String())
 	}
-	return true, nil
+	return true, report, nil
 }
 
 // getShare use piece store client to download shares from nodes

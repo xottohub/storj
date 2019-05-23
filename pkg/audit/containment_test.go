@@ -5,6 +5,7 @@ package audit_test
 
 import (
 	"crypto/rand"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -45,6 +46,8 @@ func TestReverifyContainedNodes(t *testing.T) {
 		someHash := pkcrypto.SHA256Hash(randBytes)
 
 		for _, node := range planet.StorageNodes {
+			fmt.Println(node.ID())
+
 			pending := &audit.PendingAudit{
 				NodeID:            node.ID(),
 				PieceID:           storj.PieceID{},
@@ -75,8 +78,11 @@ func TestReverifyContainedNodes(t *testing.T) {
 		verifier := audit.NewVerifier(zap.L(), reporter, transport, overlay, containment, orders, planet.Satellites[0].Identity, minBytesPerSecond)
 		require.NotNil(t, verifier)
 
-		_, err = verifier.Verify(ctx, stripe)
-		require.True(t, audit.ErrNotEnoughShares.Has(err))
+		verifiedNodes, err := verifier.Verify(ctx, stripe)
+		fmt.Println(verifiedNodes.SuccessNodeIDs)
+		fmt.Println(verifiedNodes.FailNodeIDs)
+		fmt.Println(verifiedNodes.OfflineNodeIDs)
+		require.False(t, audit.ErrNotEnoughShares.Has(err))
 	})
 }
 
