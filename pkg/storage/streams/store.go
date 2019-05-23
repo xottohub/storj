@@ -94,9 +94,7 @@ func NewStreamStore(segments segments.Store, segmentSize int64, rootKey *storj.K
 func (s *streamStore) Put(ctx context.Context, path storj.Path, pathCipher storj.Cipher, data io.Reader, metadata []byte, expiration time.Time) (m Meta, err error) {
 	defer mon.Task()(&ctx)(&err)
 	// previously file uploaded?
-
 	err = s.Delete(ctx, path, pathCipher)
-
 	if err != nil && !storage.ErrKeyNotFound.Has(err) {
 		//something wrong happened checking for an existing
 		//file with the same name
@@ -104,7 +102,6 @@ func (s *streamStore) Put(ctx context.Context, path storj.Path, pathCipher storj
 	}
 
 	m, lastSegment, err := s.upload(ctx, path, pathCipher, data, metadata, expiration)
-
 	if err != nil {
 		s.cancelHandler(context.Background(), lastSegment, path, pathCipher)
 	}
