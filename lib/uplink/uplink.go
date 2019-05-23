@@ -25,57 +25,54 @@ var (
 	maxBucketMetaSize = 10 * memory.MiB
 )
 
-// Volatile groups config values that are likely to change semantics
-// or go away entirely between releases. Be careful when using them!
-// CExport Volatile
-type Volatile struct {
-	// TLS defines options that affect TLS negotiation for outbound
-	// connections initiated by this uplink.
-	TLS struct {
-		// SkipPeerCAWhitelist determines whether to require all
-		// remote hosts to have identity certificates signed by
-		// Certificate Authorities in the default whitelist. If
-		// set to true, the whitelist will be ignored.
-		SkipPeerCAWhitelist bool
-
-		// PeerCAWhitelistPath gives the path to a CA cert
-		// whitelist file. It is ignored if SkipPeerCAWhitelist
-		// is set. If empty, the internal default peer whitelist
-		// is used.
-		PeerCAWhitelistPath string
-	}
-
-	// UseIdentity specifies the identity to be used by the uplink.
-	// If nil, a new identity will be generated.
-	UseIdentity *identity.FullIdentity
-
-	// IdentityVersion is the identity version expected in a loaded
-	// identity or used when creating an identity.
-	IdentityVersion storj.IDVersion
-
-	// PeerIDVersion is the identity versions remote peers to this node
-	// will be supported by this node.
-	PeerIDVersion string
-
-	// MaxInlineSize determines whether the uplink will attempt to
-	// store a new object in the satellite's pointerDB. Objects at
-	// or below this size will be marked for inline storage, and
-	// objects above this size will not. (The satellite may reject
-	// the inline storage and require remote storage, still.)
-	MaxInlineSize memory.Size
-
-	// MaxMemory is the default maximum amount of memory to be
-	// allocated for read buffers while performing decodes of
-	// objects. (This option is overrideable per Bucket if the user
-	// so desires.) If set to zero, the library default (4 MiB) will
-	// be used. If set to a negative value, the system will use the
-	// smallest amount of memory it can.
-	MaxMemory memory.Size
-}
-
 // Config represents configuration options for an Uplink
 type Config struct {
-	Volatile
+	// Volatile groups config values that are likely to change semantics
+	// or go away entirely between releases. Be careful when using them!
+	Volatile struct {
+		// TLS defines options that affect TLS negotiation for outbound
+		// connections initiated by this uplink.
+		TLS struct {
+			// SkipPeerCAWhitelist determines whether to require all
+			// remote hosts to have identity certificates signed by
+			// Certificate Authorities in the default whitelist. If
+			// set to true, the whitelist will be ignored.
+			SkipPeerCAWhitelist bool
+
+			// PeerCAWhitelistPath gives the path to a CA cert
+			// whitelist file. It is ignored if SkipPeerCAWhitelist
+			// is set. If empty, the internal default peer whitelist
+			// is used.
+			PeerCAWhitelistPath string
+		}
+
+		// UseIdentity specifies the identity to be used by the uplink.
+		// If nil, a new identity will be generated.
+		UseIdentity *identity.FullIdentity
+
+		// IdentityVersion is the identity version expected in a loaded
+		// identity or used when creating an identity.
+		IdentityVersion storj.IDVersion
+
+		// PeerIDVersion is the identity versions remote peers to this node
+		// will be supported by this node.
+		PeerIDVersion string
+
+		// MaxInlineSize determines whether the uplink will attempt to
+		// store a new object in the satellite's pointerDB. Objects at
+		// or below this size will be marked for inline storage, and
+		// objects above this size will not. (The satellite may reject
+		// the inline storage and require remote storage, still.)
+		MaxInlineSize memory.Size
+
+		// MaxMemory is the default maximum amount of memory to be
+		// allocated for read buffers while performing decodes of
+		// objects. (This option is overrideable per Bucket if the user
+		// so desires.) If set to zero, the library default (4 MiB) will
+		// be used. If set to a negative value, the system will use the
+		// smallest amount of memory it can.
+		MaxMemory memory.Size
+	}
 }
 
 func (c *Config) setDefaults(ctx context.Context) error {
