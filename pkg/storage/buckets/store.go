@@ -4,7 +4,6 @@
 package buckets
 
 import (
-	"bytes"
 	"context"
 	"strconv"
 	"time"
@@ -16,6 +15,8 @@ import (
 	"storj.io/storj/pkg/pb"
 	"storj.io/storj/pkg/storage/meta"
 	"storj.io/storj/pkg/storage/objects"
+	"storj.io/storj/pkg/storage/segments"
+	"storj.io/storj/pkg/storage/streams"
 	"storj.io/storj/pkg/storj"
 	"storj.io/storj/storage"
 	"storj.io/storj/uplink/metainfo"
@@ -40,7 +41,7 @@ type ListItem struct {
 
 // BucketStore contains objects store
 type BucketStore struct {
-	metainfoClient metainfo.Client
+	metainfo metainfo.Client
 }
 
 // Meta is the bucket metadata struct
@@ -53,8 +54,8 @@ type Meta struct {
 }
 
 // NewStore instantiates BucketStore
-func NewStore(client metainfo.Client) Store {
-	return &BucketStore{metainfoClient: client}
+func NewStore(metainfo metainfo.Client) Store {
+	return &BucketStore{metainfo: metainfo}
 }
 
 // GetObjectStore returns an implementation of objects.Store
@@ -86,16 +87,30 @@ func (b *BucketStore) Get(ctx context.Context, bucket string) (meta Meta, err er
 	if bucket == "" {
 		return Meta{}, storj.ErrNoBucket.New("")
 	}
-	//--- UPDATE
-	objMeta, err := b.store.Meta(ctx, bucket)
+
+	bb, objectPath, segmentIndex, err := segments.SplitPathFragments(bucket)
 	if err != nil {
-		if storage.ErrKeyNotFound.Has(err) {
-			err = storj.ErrBucketNotFound.Wrap(err)
-		}
 		return Meta{}, err
 	}
-	//---
-	return convertMeta(objMeta)
+
+	pointer, err := b.metainfo.SegmentInfo(ctx, bb, objectPath, segmentIndex)
+	if err != nil {
+		return Meta{}, err
+	}
+
+	// metadata conversion function call: pointer -> segment -> stream -> object -> bucket
+	segment := segments.ConvertMeta(pointer)
+
+	streamInfo := pb.StreamInfo{
+		NumberOfSegments: 1,
+		SegmentsSize:     segment.Size,
+		LastSegmentSize:  segment.Size,
+		Metadata:         segment.Data,
+	}
+	streamMeta := pb.StreamMeta{}
+
+	object := objects.ConvertMeta(streams.ConvertMeta(segment, streamInfo, streamMeta))
+	return convertMeta(object)
 }
 
 // Put calls objects store Put and fills in some specific metadata to be used
@@ -112,7 +127,7 @@ func (b *BucketStore) Put(ctx context.Context, bucketName string, inMeta Meta) (
 		return Meta{}, encryption.ErrInvalidConfig.New("encryption type %d is not supported", pathCipher)
 	}
 
-	r := bytes.NewReader(nil)
+	// r := bytes.NewReader(nil)
 	userMeta := map[string]string{
 		"path-enc-type":     strconv.Itoa(int(pathCipher)),
 		"default-seg-size":  strconv.FormatInt(inMeta.SegmentsSize, 10),
@@ -127,7 +142,54 @@ func (b *BucketStore) Put(ctx context.Context, bucketName string, inMeta Meta) (
 	}
 	var exp time.Time
 	//--- UPDATE
-	m, err := b.store.Put(ctx, bucketName, r, pb.SerializableMeta{UserDefined: userMeta}, exp)
+	// m, err := b.store.Put(ctx, bucketName, r, pb.SerializableMeta{UserDefined: userMeta}, exp)
+	m, err := b.Get(ctx, bucketName)
+	if err == nil {
+		//bucket exists
+		
+	}
+	//*** check if bucket exists?
+
+	//*** - prefix the bucket path with `l/` before storing in pointerdb
+	// lastSegmentPath := storj.JoinPaths("l", encPath)
+
+	//***- populate and marshal a pb.StreamInfo protobuf
+
+	// streamInfo, err := proto.Marshal(&pb.StreamInfo{
+	// 	NumberOfSegments: currentSegment + 1,
+	// 	SegmentsSize:     s.segmentSize,
+	// 	LastSegmentSize:  sizeReader.Size(),
+	// 	Metadata:         metadata,
+	// })
+
+	// *** - populate and marshal a pb.StreamMeta protobuf (the marshaled pb.StreamInfo goes in encrypted_stream_info)
+	// streamMeta := pb.StreamMeta{
+	// 	EncryptedStreamInfo: encryptedStreamInfo,
+	// 	EncryptionType:      int32(s.cipher),
+	// 	EncryptionBlockSize: int32(s.encBlockSize),
+	// }
+
+	// ***- populate and marshal a pb.Pointer protobuf
+	// pointer = &pb.Pointer{
+	// 	Type:           pb.Pointer_INLINE,
+	// 	InlineSegment:  peekReader.thresholdBuf,
+	// 	SegmentSize:    int64(len(peekReader.thresholdBuf)),
+	// 	ExpirationDate: exp,
+	// 	Metadata:       metadata,
+	// }
+
+	// ***- call metainfoClient.CommitSegment()
+
+	// ***- fill in a new storj.Bucket instance (the Created member should come from the CreationDate attribute in the protobuf resulting from that CommitSegment() call; all the other fields should be handy)
+	// type Bucket struct {
+	// 	Name                 string
+	// 	Created              time.Time
+	// 	PathCipher           Cipher
+	// 	SegmentsSize         int64
+	// 	RedundancyScheme     RedundancyScheme
+	// 	EncryptionParameters EncryptionParameters
+	// }
+
 	//---
 	if err != nil {
 		return Meta{}, err
@@ -183,7 +245,7 @@ func (b *BucketStore) List(ctx context.Context, startAfter, endBefore string, li
 	return items, more, nil
 }
 
-// convertMeta converts stream metadata to object metadata
+// convertMeta converts object metadata to bucket metadata
 func convertMeta(m objects.Meta) (out Meta, err error) {
 	out.Created = m.Modified
 	// backwards compatibility for old buckets
