@@ -144,7 +144,7 @@ func (u *Uplink) OpenProject(ctx context.Context, satelliteAddr string, apiKey A
 		uplinkCfg:     u.cfg,
 		tc:            u.tc,
 		metainfo:      metainfo,
-		project:       kvmetainfo.NewProject(metainfo),
+		project:       kvmetainfo.NewProject(buckets.NewStore(metainfo)),
 		maxInlineSize: u.cfg.Volatile.MaxInlineSize,
 	}, nil
 }
