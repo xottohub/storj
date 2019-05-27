@@ -25,36 +25,13 @@ func TestDialNode(t *testing.T) {
 	ctx := testcontext.New(t)
 	defer ctx.Cleanup()
 
-	planet, err := testplanet.New(t, 0, 2, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ctx.Check(planet.Shutdown)
-
-	whitelistPath, err := planet.WriteWhitelist(storj.LatestIDVersion())
+	planet, err := testplanet.New(t, 0, 1, 0)
 	require.NoError(t, err)
+	defer ctx.Check(planet.Shutdown)
 
 	planet.Start(ctx)
 
 	client := planet.StorageNodes[0].Transport
-
-	unsignedIdent, err := testidentity.PregeneratedIdentity(0, storj.LatestIDVersion())
-	require.NoError(t, err)
-
-	signedIdent, err := testidentity.PregeneratedSignedIdentity(0, storj.LatestIDVersion())
-	require.NoError(t, err)
-
-	opts, err := tlsopts.NewOptions(signedIdent, tlsopts.Config{
-		UsePeerCAWhitelist:  true,
-		PeerCAWhitelistPath: whitelistPath,
-		PeerIDVersions:      "*",
-	})
-	require.NoError(t, err)
-
-	unsignedClientOpts, err := tlsopts.NewOptions(unsignedIdent, tlsopts.Config{
-		PeerIDVersions: "*",
-	})
-	require.NoError(t, err)
 
 	t.Run("DialNode with invalid targets", func(t *testing.T) {
 		targets := []*pb.Node{
@@ -79,7 +56,7 @@ func TestDialNode(t *testing.T) {
 				Id: storj.NodeID{},
 				Address: &pb.NodeAddress{
 					Transport: pb.NodeTransport_TCP_TLS_GRPC,
-					Address:   planet.StorageNodes[1].Addr(),
+					Address:   planet.StorageNodes[0].Addr(),
 				},
 			},
 		}
@@ -97,10 +74,10 @@ func TestDialNode(t *testing.T) {
 
 	t.Run("DialNode with valid target", func(t *testing.T) {
 		target := &pb.Node{
-			Id: planet.StorageNodes[1].ID(),
+			Id: planet.StorageNodes[0].ID(),
 			Address: &pb.NodeAddress{
 				Transport: pb.NodeTransport_TCP_TLS_GRPC,
-				Address:   planet.StorageNodes[1].Addr(),
+				Address:   planet.StorageNodes[0].Addr(),
 			},
 		}
 
@@ -115,11 +92,23 @@ func TestDialNode(t *testing.T) {
 	})
 
 	t.Run("DialNode with valid signed target", func(t *testing.T) {
+		signedIdent, err := testidentity.PregeneratedSignedIdentity(0, storj.LatestIDVersion())
+		require.NoError(t, err)
+		whitelistPath, err := planet.WriteWhitelist(storj.LatestIDVersion())
+		require.NoError(t, err)
+
+		opts, err := tlsopts.NewOptions(signedIdent, tlsopts.Config{
+			UsePeerCAWhitelist:  true,
+			PeerCAWhitelistPath: whitelistPath,
+			PeerIDVersions:      "*",
+		})
+		require.NoError(t, err)
+
 		target := &pb.Node{
-			Id: planet.StorageNodes[1].ID(),
+			Id: planet.StorageNodes[0].ID(),
 			Address: &pb.NodeAddress{
 				Transport: pb.NodeTransport_TCP_TLS_GRPC,
-				Address:   planet.StorageNodes[1].Addr(),
+				Address:   planet.StorageNodes[0].Addr(),
 			},
 		}
 
@@ -137,11 +126,19 @@ func TestDialNode(t *testing.T) {
 	})
 
 	t.Run("DialNode with unsigned identity", func(t *testing.T) {
+		unsignedIdent, err := testidentity.PregeneratedIdentity(0, storj.LatestIDVersion())
+		require.NoError(t, err)
+
+		unsignedClientOpts, err := tlsopts.NewOptions(unsignedIdent, tlsopts.Config{
+			PeerIDVersions: "*",
+		})
+		require.NoError(t, err)
+
 		target := &pb.Node{
-			Id: planet.StorageNodes[1].ID(),
+			Id: planet.StorageNodes[0].ID(),
 			Address: &pb.NodeAddress{
 				Transport: pb.NodeTransport_TCP_TLS_GRPC,
-				Address:   planet.StorageNodes[1].Addr(),
+				Address:   planet.StorageNodes[0].Addr(),
 			},
 		}
 
@@ -149,21 +146,39 @@ func TestDialNode(t *testing.T) {
 		dialOption, err := unsignedClientOpts.DialOption(target.Id)
 		require.NoError(t, err)
 
-		conn, err := client.DialNode(
-			timedCtx, target, dialOption,
-		)
+		conn, err := client.DialNode(timedCtx, target, dialOption)
 		cancel()
 
 		assert.NotNil(t, conn)
 		require.NoError(t, err)
 		assert.NoError(t, conn.Close())
 	})
+}
 
+func TestDialAddress(t *testing.T) {
+	ctx := testcontext.New(t)
+	defer ctx.Cleanup()
+
+	planet, err := testplanet.New(t, 0, 1, 0)
+	require.NoError(t, err)
+	defer ctx.Check(planet.Shutdown)
+
+	planet.Start(ctx)
+
+	client := planet.StorageNodes[0].Transport
 	t.Run("DialAddress with unsigned identity", func(t *testing.T) {
+		unsignedIdent, err := testidentity.PregeneratedIdentity(0, storj.LatestIDVersion())
+		require.NoError(t, err)
+
+		unsignedClientOpts, err := tlsopts.NewOptions(unsignedIdent, tlsopts.Config{
+			PeerIDVersions: "*",
+		})
+		require.NoError(t, err)
+
 		timedCtx, cancel := context.WithTimeout(ctx, time.Second)
 		dialOption := unsignedClientOpts.DialUnverifiedIDOption()
 		conn, err := client.DialAddress(
-			timedCtx, planet.StorageNodes[1].Addr(), dialOption,
+			timedCtx, planet.StorageNodes[0].Addr(), dialOption,
 		)
 		cancel()
 
@@ -174,7 +189,7 @@ func TestDialNode(t *testing.T) {
 
 	t.Run("DialAddress with valid address", func(t *testing.T) {
 		timedCtx, cancel := context.WithTimeout(ctx, time.Second)
-		conn, err := client.DialAddress(timedCtx, planet.StorageNodes[1].Addr())
+		conn, err := client.DialAddress(timedCtx, planet.StorageNodes[0].Addr())
 		cancel()
 
 		assert.NoError(t, err)
@@ -191,7 +206,7 @@ func TestDialNode_BadServerCertificate(t *testing.T) {
 		zap.L(),
 		testplanet.Config{
 			SatelliteCount:   0,
-			StorageNodeCount: 2,
+			StorageNodeCount: 1,
 			UplinkCount:      0,
 			Reconfigure:      testplanet.DisablePeerCAWhitelist,
 			Identities:       testidentity.NewPregeneratedIdentities(storj.LatestIDVersion()),
@@ -219,10 +234,10 @@ func TestDialNode_BadServerCertificate(t *testing.T) {
 
 	t.Run("DialNode with bad server certificate", func(t *testing.T) {
 		target := &pb.Node{
-			Id: planet.StorageNodes[1].ID(),
+			Id: planet.StorageNodes[0].ID(),
 			Address: &pb.NodeAddress{
 				Transport: pb.NodeTransport_TCP_TLS_GRPC,
-				Address:   planet.StorageNodes[1].Addr(),
+				Address:   planet.StorageNodes[0].Addr(),
 			},
 		}
 
@@ -241,10 +256,10 @@ func TestDialNode_BadServerCertificate(t *testing.T) {
 
 	t.Run("DialAddress with bad server certificate", func(t *testing.T) {
 		timedCtx, cancel := context.WithTimeout(ctx, time.Second)
-		dialOption, err := opts.DialOption(planet.StorageNodes[1].ID())
+		dialOption, err := opts.DialOption(planet.StorageNodes[0].ID())
 		require.NoError(t, err)
 
-		conn, err := client.DialAddress(timedCtx, planet.StorageNodes[1].Addr(), dialOption)
+		conn, err := client.DialAddress(timedCtx, planet.StorageNodes[0].Addr(), dialOption)
 		cancel()
 
 		assert.Nil(t, conn)
