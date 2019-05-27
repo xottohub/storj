@@ -22,7 +22,7 @@ type Observer interface {
 	ConnFailure(ctx context.Context, node *pb.Node, err error)
 }
 
-// Client defines the interface to an transport client.
+// Client is the interface of a transport client.
 type Client interface {
 	DialNode(ctx context.Context, node *pb.Node, opts ...grpc.DialOption) (*grpc.ClientConn, error)
 	DialAddress(ctx context.Context, address string, opts ...grpc.DialOption) (*grpc.ClientConn, error)
@@ -36,7 +36,7 @@ type Timeouts struct {
 	Dial    time.Duration
 }
 
-// Transport interface structure
+// Transport is an implementation which satisfies the Client interface.
 type Transport struct {
 	tlsOpts   *tlsopts.Options
 	observers []Observer
