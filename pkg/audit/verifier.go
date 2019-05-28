@@ -6,12 +6,16 @@ package audit
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/vivint/infectious"
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	monkit "gopkg.in/spacemonkeygo/monkit.v2"
 
 	"storj.io/storj/internal/memory"
@@ -317,6 +321,56 @@ func (verifier *Verifier) GetShare(ctx context.Context, limit *pb.AddressedOrder
 		PieceNum: pieceNum,
 		Data:     buf,
 	}, nil
+}
+
+var (
+	errStorageNodeOffline        = errors.New("Storage Node is offline")
+	errStorageNodeDialTimeout    = errors.New("Storage Node dialing timed out")
+	errStorageNodeDialUnexpected = errors.New("Storage Node returned an unexpected error when dialing")
+)
+
+// TODO: WIP#if/v3-1760 write docs
+func (verifier *Verifier) getNodeConnection(id storj.NodeID, address *pb.NodeAddress) (*grpc.ClientConn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address.GetAddress())
+	if err != nil {
+		if err == context.DeadlineExceeded {
+			return nil, errStorageNodeDialTimeout
+		}
+
+		if strings.Contains(err.Error(), "connect: connection refused") {
+			return nil, errStorageNodeOffline
+		}
+
+		return nil, errStorageNodeDialUnexpected
+	}
+
+	if err := conn.Close(); err != nil {
+		// TODO: WIP#if/v3-1760 Do we want to return this error? it doesn't look
+		// important for what this method tries to achieve
+		verifier.log.Warn(
+			"Node dialing test connection failed on close",
+			zap.Error(errs.Wrap(err)),
+		)
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	grpcConn, err := verifier.transport.DialNode(ctx, &pb.Node{
+		Id:      id,
+		Address: address,
+	})
+	if err != nil {
+		// TODO: WIP#if/v3-1760 we could check here err == context.DeadlineExceeded
+		// but without the previous Dial almost all the cases detected by it fall
+		// under that condition so we cannot discern between those
+		return nil, errStorageNodeDialUnexpected
+	}
+
+	return grpcConn, nil
 }
 
 // auditShares takes the downloaded shares and uses infectious's Correct function to check that they
