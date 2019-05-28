@@ -29,6 +29,15 @@ typedef struct { const char *p; ptrdiff_t n; } _GoString_;
 
 #line 1 "cgo-generated-wrapper"
 
+#line 6 "bucket.go"
+
+ #ifndef STORJ_HEADERS
+   #define STORJ_HEADERS
+   #include "c/headers/main.h"
+ #endif
+
+#line 1 "cgo-generated-wrapper"
+
 #line 6 "common.go"
 
  #include <stdlib.h>
@@ -113,6 +122,8 @@ extern APIKeyRef_t ParseAPIKey(char* p0, char** p1);
 // Serialize serializes the API Key to a string
 
 extern char* Serialize(APIKeyRef_t p0);
+
+extern void UploadObject(BucketRef_t p0, char* p1, ReaderRef_t p2, UploadOptions_t* p3, char** p4);
 
 extern IDVersion_t GetIDVersion(unsigned int p0, char** p1);
 
