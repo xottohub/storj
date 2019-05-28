@@ -34,7 +34,7 @@ The credit is automatically applied to the account and will have a max limit tha
   The user will be charged for activity that is beyond the Free Credit limit within the set timeframe
   The user will be charged for activity that is after the expiration date.
   Example statement to the user: 
-  “You will not be charged until all of your XX credit is used or it expires. Your $XX credit will be applied immediately”
+  “You will not be charged until all of your XX credit is used or it expires. Your XX credit will be applied immediately”
   A user's free credit can only be applied to projects that they create
 
   A client can see their awarded Free Credits in their dashboard with associated expiration date
@@ -106,13 +106,8 @@ The credit is automatically applied to the account and will have a max limit tha
 **satellite/marketing/service.go**
 ```golang
 func (m *marketing) GetCurrentOffer(ctx context.Context, offerStatus OfferStatus) (*Offer, error) {
-  offer, err := m.db.Marketing().Offers().GetCurrentOfferByStatus(ctx, offerStatus)
-  if err == sql.ErrNoRows && offerStatus == Active {
-    offer, err = m.db.Marketing().Offers().GetCurrentOfferByStatus(ctx, Default)
-    if err != nil {
-      return nil, Error.Wrap(err)
-    }
-  }
+  isDefault := offerStatus == Default
+  offer, err := m.db.Marketing().Offers().GetCurrentOffer(ctx, isDefault)
   if err != nil {
     return nil, Error.Wrap(err)
   }
@@ -153,7 +148,7 @@ func (m *marketing) ListAllOffers(ctx context.Context) ([]Offers, error)
 ```golang
 type Offers interface {
   ListAllOffers(ctx context.Context) ([]Offer, error)
-  GetCurrentOffer(ctx context.Context, offerId Offer.ID) (Offer, error)
+  GetCurrentOffer(ctx context.Context, isDefault bool) (Offer, error)
   Create(ctx context.Context, offer *Offer)
 }
 
