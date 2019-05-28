@@ -29,12 +29,12 @@ Existing clients give their UUID Referral Link to their friends for their friend
 ### AWARDED CREDIT
 
 - When free credit is awarded:
-It is displayed as the USD value that is equivalent to the storage & bandwidth allotted amount for the credit
+It is displayed as the Network activity value (gb) that is equivalent to the storage & bandwidth allotted amount for the credit
 The credit is automatically applied to the account and will have a max limit that can be reached within a set timeframe, as well as an expiration date for it to be used by.
   The user will be charged for activity that is beyond the Free Credit limit within the set timeframe
   The user will be charged for activity that is after the expiration date.
   Example statement to the user: 
-  “You will not be charged until all of your $XX credit is used or it expires. Your $XX credit will be applied immediately”
+  “You will not be charged until all of your XX credit is used or it expires. Your $XX credit will be applied immediately”
   A user's free credit can only be applied to projects that they create
 
   A client can see their awarded Free Credits in their dashboard with associated expiration date
@@ -67,8 +67,8 @@ The credit is automatically applied to the account and will have a max limit tha
     id - int
     name -  text
     description - text  
-    award_credits_in_cents - integer
-    invitee_credits_in_cents - integer
+    award_credit_in_gb - float64
+    invitee_credit_in_gb - float64
     redeemable_cap - integer
     num_redeemed - integer
     created_at - timestamp
@@ -84,8 +84,8 @@ The credit is automatically applied to the account and will have a max limit tha
     id - int
     user_id - bytea
     offer_id - int
-    credits_earned_in_cents - int
-    credits_used_in_cents - int
+    credits_earned_in_gb - float64
+    credits_used_in_gb - float64
     credit_type - enum[AWARD, INVITEE, NO_TYPE]
     expires_at - timestamp
     created_at - timestamp
@@ -106,9 +106,9 @@ The credit is automatically applied to the account and will have a max limit tha
 **satellite/marketing/service.go**
 ```golang
 func (m *marketing) GetCurrentOffer(ctx context.Context, offerStatus OfferStatus) (*Offer, error) {
-  offer, err := m.db.Marketing().Offers().Get_Offer_By_Status(ctx, offerStatus)
+  offer, err := m.db.Marketing().Offers().GetCurrentOfferByStatus(ctx, offerStatus)
   if err == sql.ErrNoRows && offerStatus == Active {
-    offer, err = m.db.Marketing().Offers().Get_Offer_By_Status(ctx, Default)
+    offer, err = m.db.Marketing().Offers().GetCurrentOfferByStatus(ctx, Default)
     if err != nil {
       return nil, Error.Wrap(err)
     }
@@ -125,7 +125,7 @@ func (m *marketing) StopOffer(ctx context.Context, offerId Offer.ID) error {
     Status: Done,
     ExpiresAt: time.Now(),
   }
-  err := m.db.Marketing().Offers().Update_Offer_By_ID(ctx, offerId, o)
+  err := m.db.Marketing().Offers().UpdateOfferByID(ctx, offerId, o)
   if err != nil {
     return Error.Wrap(err)
   }
@@ -138,7 +138,7 @@ func (m *marketing) Create(ctx context.Context, offer Offer) error {
     offer.ExpiresAt = time.Now().AddDate(100, 0, 0)
   }
 
-  err := m.db.Marketing().Offers().Create_Offer(ctx, offer)
+  err := m.db.Marketing().Offers().Create(ctx, offer)
   if err != nil {
     return Error.Wrap(err)
   }
@@ -167,11 +167,34 @@ const (
 type UpdateOffer struct {
   Status OfferStatus
   ExpiresAt time.time
+  NumRedeemed int
 }
 ```
 
 **satellite/satellitedb/offers.go**
 ```golang
+func (o *offersDB) GetCurrentOfferByStatus(ctx context.Context, isDefault bool) (*marketing.Offer, error) {
+  var statement string
+  if isDefault {
+    statement = `
+      SELECT * FROM offers WHERE offers.status=? AND offers.expires_at>NOW() order by offers.created_at desc;
+    `
+  } else {
+    statement := `WITH o AS (
+        SELECT * FROM offers WHERE offers.status=? AND offers.expires_at>NOW()
+      )
+      SELECT * FROM o
+      UNION ALL
+      SELECT * FROM offers
+      WHERE offers.status=?
+      AND NOT EXISTS (
+      SELECT * FROM o
+      ) order by offers.created_at desc;`
+  }
+
+  currentOffer := returnedValueWithLatestCreatedAt
+  return currentOffer, nil
+}
 func (o *offersDB) Create(ctx context.Context, offer *marketing.Offer) error {
   tx, err := o.db.Open(ctx)
   if err != nil {
